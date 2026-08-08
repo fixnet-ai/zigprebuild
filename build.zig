@@ -101,7 +101,7 @@ pub fn build(b: *std.Build) void {
     });
     bs_configure.step.dependOn(&setup_wrappers.step);
     bs_configure.setEnvironmentVariable("CC", cc_env);
-    bs_configure.setEnvironmentVariable("CXX", cxx_env);
+    bs_configure.setEnvironmentVariable("CXX", cxx_env); // BoringSSL 内部使用 C++
     bs_configure.setEnvironmentVariable("GOWORK", "off");
 
     const bs_build = b.addSystemCommand(&.{
@@ -152,7 +152,6 @@ pub fn build(b: *std.Build) void {
     });
     h2_configure.step.dependOn(&setup_wrappers.step);
     h2_configure.setEnvironmentVariable("CC", cc_env);
-    h2_configure.setEnvironmentVariable("CXX", cxx_env);
     h2_configure.setEnvironmentVariable("GOWORK", "off");
 
     const h2_build = b.addSystemCommand(&.{
@@ -210,7 +209,6 @@ pub fn build(b: *std.Build) void {
     });
     quic_configure.step.dependOn(&bs_copy.step); // 需要 BoringSSL 先构建
     quic_configure.setEnvironmentVariable("CC", cc_env);
-    quic_configure.setEnvironmentVariable("CXX", cxx_env);
     quic_configure.setEnvironmentVariable("GOWORK", "off");
 
     const quic_build = b.addSystemCommand(&.{
@@ -263,7 +261,6 @@ pub fn build(b: *std.Build) void {
     h3_configure.step.dependOn(&setup_wrappers.step);
     h3_configure.step.dependOn(&init_sfparse.step); // 需要 sfparse 子模块
     h3_configure.setEnvironmentVariable("CC", cc_env);
-    h3_configure.setEnvironmentVariable("CXX", cxx_env);
     h3_configure.setEnvironmentVariable("GOWORK", "off");
 
     const h3_build = b.addSystemCommand(&.{
