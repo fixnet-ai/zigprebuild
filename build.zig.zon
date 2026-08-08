@@ -1,0 +1,11 @@
+.{
+    .name = .zigprebuild,
+    .version = "0.0.1",
+    .fingerprint = 0x96e6b3f10d40ee9a,
+    .dependencies = .{},
+    .minimum_zig_version = "0.16.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+}
