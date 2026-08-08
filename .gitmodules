@@ -1,0 +1,13 @@
+[submodule "boringssl"]
+	path = boringssl
+	url = https://github.com/google/boringssl.git
+	branch = main
+[submodule "ngtcp2"]
+	path = ngtcp2
+	url = https://github.com/ngtcp2/ngtcp2.git
+[submodule "nghttp3"]
+	path = nghttp3
+	url = https://github.com/ngtcp2/nghttp3.git
+[submodule "nghttp2"]
+	path = nghttp2
+	url = https://github.com/nghttp2/nghttp2.git
