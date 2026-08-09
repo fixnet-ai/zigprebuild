@@ -11,3 +11,6 @@
 [submodule "nghttp2"]
 	path = nghttp2
 	url = https://github.com/nghttp2/nghttp2.git
+[submodule "libyaml"]
+	path = libyaml
+	url = https://github.com/yaml/libyaml.git

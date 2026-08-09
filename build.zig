@@ -2,18 +2,19 @@ const std = @import("std");
 
 /// zigprebuild — 跨平台 C 库预编译静态库
 ///
-/// 将 BoringSSL / nghttp2 / ngtcp2 / nghttp3 从官方 release 源码
-/// 通过 cmake + zig cc 交叉编译为多平台静态库，产物输出到
-/// zig-out/<target>/lib/ 和 zig-out/<target>/include/。
+/// 将 BoringSSL / nghttp2 / ngtcp2 / nghttp3 / libyaml 从官方 release 源码
+/// 通过 cmake + zig cc（或 Zig 原生编译）交叉编译为多平台产物。
+/// 重量库输出到 zig-out/<target>/lib/ 和 zig-out/<target>/include/；
+/// 轻量库（libyaml）通过 addModule("yaml_c") 暴露 Zig 模块。
 ///
 /// 依赖链：boringssl → ngtcp2（QUIC 加密后端）
-///         nghttp2、nghttp3 无依赖，可独立构建
+///         nghttp2、nghttp3、libyaml 无依赖，可独立构建
 ///
 /// 消费者项目只需通过 b.dependency("zigprebuild", ...) 引用
 /// 并链接 zig-out/<target>/lib/*.a 即可，无需运行 cmake。
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
-    _ = b.standardOptimizeOption(.{});
+    const optimize = b.standardOptimizeOption(.{});
 
     // ---- 平台映射 ----
     const cmake_system = switch (target.result.os.tag) {
@@ -40,7 +41,6 @@ pub fn build(b: *std.Build) void {
     });
 
     const cc_env = b.fmt("zig cc -target {s}", .{zig_target});
-    const cxx_env = b.fmt("zig c++ -target {s}", .{zig_target});
 
     // ---- 共享：zig-ar / zig-ranlib wrapper 脚本 ----
     // cmake 要求 AR/RANLIB 是单可执行文件，不能用带空格的子命令
@@ -101,7 +101,7 @@ pub fn build(b: *std.Build) void {
     });
     bs_configure.step.dependOn(&setup_wrappers.step);
     bs_configure.setEnvironmentVariable("CC", cc_env);
-    bs_configure.setEnvironmentVariable("CXX", cxx_env); // BoringSSL 内部使用 C++
+    // 不设 CXX — BoringSSL 只有 C 和 ASM 源文件（C++ 功能可选，我们不使用）
     bs_configure.setEnvironmentVariable("GOWORK", "off");
 
     const bs_build = b.addSystemCommand(&.{
@@ -283,7 +283,60 @@ pub fn build(b: *std.Build) void {
     });
     h3_copy.step.dependOn(&h3_build.step);
 
-    // ---- 默认构建目标：全部 4 个库 ----
+    // ================================================================
+    // 5. libyaml（JSON 配置解析，Zig 原生编译，无 cmake 依赖）
+    // ================================================================
+    const yaml_c_mod = b.addModule("yaml_c", .{
+        .root_source_file = b.path("yaml_c.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // translate-c: yaml.h → Zig 类型绑定（native target，类型定义跨平台通用）
+    const yaml_h = b.addTranslateC(.{
+        .root_source_file = b.path("libyaml/include/yaml.h"),
+        .target = b.resolveTargetQuery(.{}),
+        .optimize = optimize,
+    });
+    yaml_h.addIncludePath(b.path("libyaml/include"));
+    yaml_c_mod.addImport("yaml_h_internal", yaml_h.createModule());
+
+    // 编译 libyaml C 源码
+    yaml_c_mod.addCSourceFiles(.{
+        .root = b.path("libyaml/src"),
+        .files = &.{
+            "api.c",    "dumper.c", "emitter.c", "loader.c",
+            "parser.c", "reader.c", "scanner.c", "writer.c",
+        },
+        .flags = &.{
+            "-O3",
+            "-std=gnu11",
+            "-DYAML_VERSION_MAJOR=0",
+            "-DYAML_VERSION_MINOR=2",
+            "-DYAML_VERSION_PATCH=5",
+            "-DYAML_VERSION_STRING=\"0.2.5\"",
+        },
+    });
+    yaml_c_mod.addIncludePath(b.path("libyaml/src"));
+    yaml_c_mod.addIncludePath(b.path("libyaml/include"));
+
+    // 交叉编译时添加 sysroot include path
+    if (b.sysroot) |s| {
+        const sysroot_include = b.pathJoin(&.{ s, "usr", "include" });
+        yaml_c_mod.addSystemIncludePath(.{ .cwd_relative = sysroot_include });
+        const common_android_archs = [_][]const u8{
+            "aarch64-linux-android",
+            "arm-linux-androideabi",
+            "x86_64-linux-android",
+            "i686-linux-android",
+        };
+        for (common_android_archs) |triple| {
+            const arch_inc = b.pathJoin(&.{ s, "usr", "include", triple });
+            yaml_c_mod.addSystemIncludePath(.{ .cwd_relative = arch_inc });
+        }
+    }
+
+    // ---- 默认构建目标：全部 5 个库 ----
     b.default_step.dependOn(&bs_copy.step);
     b.default_step.dependOn(&h2_copy.step);
     b.default_step.dependOn(&quic_copy.step);

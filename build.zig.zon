@@ -7,5 +7,6 @@
     .paths = .{
         "build.zig",
         "build.zig.zon",
+        "yaml_c.zig",
     },
 }
