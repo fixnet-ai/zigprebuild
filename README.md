@@ -1,7 +1,8 @@
 # zigprebuild
 
-跨平台 C 静态库预编译项目。通过 cmake + zig cc 将 BoringSSL、nghttp2、ngtcp2、nghttp3
-从官方 release 源码交叉编译为多平台静态库，供 zigbox 生态各项目直接链接使用。
+跨平台 C 静态库预编译项目。通过 cmake + zig cc（或 Zig 原生编译）将
+BoringSSL、nghttp2、ngtcp2、nghttp3、libyaml 从官方 release 源码交叉编译，
+供 zigbox 生态各项目直接链接使用。
 
 ## 设计目标
 
@@ -17,6 +18,7 @@
 | [nghttp2](https://github.com/nghttp2/nghttp2) | v1.70.0 | HTTP/2 帧层 | — |
 | [ngtcp2](https://github.com/ngtcp2/ngtcp2) | v1.25.0 | QUIC 传输层 | BoringSSL |
 | [nghttp3](https://github.com/ngtcp2/nghttp3) | v1.18.0 | HTTP/3 帧层 | — |
+| [libyaml](https://github.com/yaml/libyaml) | v0.2.5 | YAML 解析 | — |
 
 ## 快速开始
 
@@ -54,7 +56,11 @@ zig-out/<target>/
     nghttp3/                       # nghttp3 头文件
 ```
 
+libyaml（轻量库）通过 Zig 模块暴露，无独立 `.a` 文件（通过 `addCSourceFiles` 嵌入消费模块）。
+
 ### 在消费项目中使用
+
+**重量库（.a 文件）：**
 
 `build.zig.zon`:
 
@@ -76,6 +82,12 @@ const out = b.fmt("zig-out/{s}", .{zig_target});
 module.addObjectFile(prebuild_dep.path(b.fmt("{s}/lib/libssl.a", .{out})));
 module.addObjectFile(prebuild_dep.path(b.fmt("{s}/lib/libcrypto.a", .{out})));
 module.addIncludePath(prebuild_dep.path(b.fmt("{s}/include", .{out})));
+```
+
+**轻量库（Zig 模块）：**
+
+```zig
+module.addImport("yaml_c", prebuild_dep.module("yaml_c"));
 ```
 
 ## 构建依赖
