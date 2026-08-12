@@ -1,7 +1,7 @@
 # zigprebuild
 
 跨平台 C 静态库预编译项目。通过 cmake + zig cc（或 Zig 原生编译）将
-BoringSSL、nghttp2、ngtcp2、nghttp3、libyaml 从官方 release 源码交叉编译，
+BoringSSL、nghttp2、ngtcp2、nghttp3、libyaml、libmdbx、lwIP 从官方 release 源码交叉编译，
 供 zigbox 生态各项目直接链接使用。
 
 ## 设计目标
@@ -19,6 +19,10 @@ BoringSSL、nghttp2、ngtcp2、nghttp3、libyaml 从官方 release 源码交叉�
 | [ngtcp2](https://github.com/ngtcp2/ngtcp2) | v1.25.0 | QUIC 传输层 | BoringSSL |
 | [nghttp3](https://github.com/ngtcp2/nghttp3) | v1.18.0 | HTTP/3 帧层 | — |
 | [libyaml](https://github.com/yaml/libyaml) | v0.2.5 | YAML 解析 | — |
+| [libmdbx](https://github.com/Mithril-mine/libmdbx) | v0.14.2 | KV 数据库（DNS 持久化） | cpu_model |
+| [lmdbx-zig](https://github.com/fixnet-ai/lmdbx-zig) | v0.4.1 | libmdbx Zig 封装 | libmdbx, cpu_model |
+| [cpu_model](https://github.com/slyshykO/cpu_model) | main | CPU 特性检测（LLVM compiler-rt） | — |
+| [lwIP](https://github.com/fixnet-ai/lwip) | STABLE-2_2_1-fixnet | TCP/IP 协议栈（TUN 设备） | — |
 
 ## 快速开始
 
@@ -88,6 +92,17 @@ module.addIncludePath(prebuild_dep.path(b.fmt("{s}/include", .{out})));
 
 ```zig
 module.addImport("yaml_c", prebuild_dep.module("yaml_c"));
+```
+
+**仅引用路径（lwIP）：**
+
+lwIP 的编译参数（源文件列表、移动端标志等）由消费项目控制，zigprebuild 只提供源码路径：
+
+```zig
+const pb = b.dependency("zigprebuild", .{ .target = target, .optimize = optimize });
+module.addIncludePath(pb.path("lwip"));
+module.addIncludePath(pb.path("lwip/src/include"));
+module.addCSourceFiles(.{ .root = pb.path("lwip/src"), .files = &sources });
 ```
 
 ## 构建依赖

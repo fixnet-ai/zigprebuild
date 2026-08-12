@@ -1,5 +1,21 @@
 # Progress Log — zigprebuild
 
+## 2026-08-12: v0.24.0 — 新增 lwIP、libmdbx、lmdbx-zig、cpu_model submodule ✅
+
+- **Status:** complete
+- 从 `zigproxy/vendor/` 迁移 libmdbx、lmdbx-zig、cpu_features → cpu_model 至 zigprebuild
+  - libmdbx: `Mithril-mine/libmdbx` v0.14.2（之前为裸拷文件）
+  - lmdbx-zig: fork 自 `theseyan/lmdbx-zig` v0.4.0 → `fixnet-ai/lmdbx-zig` v0.4.1（新增 FreeBSD 构建修复、path-based deps）
+  - cpu_model: `slyshykO/cpu_model` main（LLVM compiler-rt cpu_model 子集，替代原 cpu_features）
+- 从 `zigtun/src/lwip` 迁移 lwIP 至 zigprebuild
+  - lwIP: fork 自 `lwip-tcpip/lwip` STABLE-2.2.1 → `fixnet-ai/lwip` STABLE-2_2_1-fixnet（含 fixnet port + PRETEND 透明代理补丁）
+- 消费项目路径更新：
+  - zigfoundation `build.zig.zon`: `.lmdbx` → `../zigprebuild/lmdbx-zig`
+  - zproxy `build.zig.zon`: `.lmdbx` → `../zigprebuild/lmdbx-zig`
+  - zigtun `build.zig`: lwIP 改用 `prebuild_dep.path("lwip/...")`
+- 删除 `zigproxy/vendor/` 和 `zproxy/vendor/` 中的冗余副本
+- 验证：6/6 平台全通过（含 FreeBSD）
+
 ## 2026-08-09: v0.23.0 — 项目初始化 ✅
 
 - **Status:** complete
