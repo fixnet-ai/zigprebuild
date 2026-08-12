@@ -24,3 +24,7 @@
 [submodule "cpu_model"]
 	path = cpu_model
 	url = https://github.com/slyshykO/cpu_model.git
+[submodule "lwip"]
+	path = lwip
+	url = https://github.com/fixnet-ai/lwip.git
+	branch = fixnet
