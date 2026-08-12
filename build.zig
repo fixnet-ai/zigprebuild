@@ -21,6 +21,7 @@ pub fn build(b: *std.Build) void {
         .macos => "Darwin",
         .linux => "Linux",
         .windows => "Windows",
+        .freebsd => "FreeBSD",
         else => @panic("unsupported target OS"),
     };
 
