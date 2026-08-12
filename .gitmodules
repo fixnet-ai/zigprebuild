@@ -14,3 +14,13 @@
 [submodule "libyaml"]
 	path = libyaml
 	url = https://github.com/yaml/libyaml.git
+[submodule "libmdbx"]
+	path = libmdbx
+	url = https://github.com/Mithril-mine/libmdbx.git
+[submodule "lmdbx-zig"]
+	path = lmdbx-zig
+	url = https://github.com/fixnet-ai/lmdbx-zig.git
+	branch = fixnet
+[submodule "cpu_model"]
+	path = cpu_model
+	url = https://github.com/slyshykO/cpu_model.git
