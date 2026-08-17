@@ -42,6 +42,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const cc_env = b.fmt("zig cc -target {s}", .{zig_target});
+    const cxx_env = b.fmt("zig c++ -target {s}", .{zig_target});
 
     // ---- 共享：zig-ar / zig-ranlib wrapper 脚本 ----
     // cmake 要求 AR/RANLIB 是单可执行文件，不能用带空格的子命令
@@ -102,7 +103,9 @@ pub fn build(b: *std.Build) void {
     });
     bs_configure.step.dependOn(&setup_wrappers.step);
     bs_configure.setEnvironmentVariable("CC", cc_env);
-    // 不设 CXX — BoringSSL 只有 C 和 ASM 源文件（C++ 功能可选，我们不使用）
+    // BoringSSL 的 crypto/ssl 库主体是 C++（.cc 源文件），必须设置 CXX，
+    // 否则 cmake 回退到宿主 C++ 编译器，产出错误架构/格式的 .obj（如 arm64 Mach-O）
+    bs_configure.setEnvironmentVariable("CXX", cxx_env);
     bs_configure.setEnvironmentVariable("GOWORK", "off");
 
     const bs_build = b.addSystemCommand(&.{
