@@ -19,6 +19,7 @@ pub fn build(b: *std.Build) void {
     // ---- 平台映射 ----
     const cmake_system = switch (target.result.os.tag) {
         .macos => "Darwin",
+        .ios => "iOS",
         .linux => "Linux",
         .windows => "Windows",
         .freebsd => "FreeBSD",
@@ -31,18 +32,35 @@ pub fn build(b: *std.Build) void {
         else => @panic("unsupported CPU arch"),
     };
 
+    // zig cc -target 三元组（arch-os-abi）。abi 直接 @tagName 映射，
+    // 与 zig 三元组一致：musl/gnu/android/simulator/none。
     const zig_target = b.fmt("{s}-{s}-{s}", .{
         @tagName(target.result.cpu.arch),
         @tagName(target.result.os.tag),
-        switch (target.result.os.tag) {
-            .linux => "musl",
-            .windows => "gnu",
-            else => "none",
-        },
+        @tagName(target.result.abi),
     });
 
-    const cc_env = b.fmt("zig cc -target {s}", .{zig_target});
-    const cxx_env = b.fmt("zig c++ -target {s}", .{zig_target});
+    const is_ios = target.result.os.tag == .ios;
+    const is_android = target.result.os.tag == .linux and target.result.abi == .android;
+
+    // iOS / Android 无法通过 zig 内置 libc 提供头文件，需额外 -isystem：
+    //   iOS     → zig 内置 darwin libc（any-darwin-any，与 macOS 同源）；
+    //             zig 对 .ios 目标不自动加入该路径（期望外部 SDK），需手动补。
+    //   Android → zig 0.16.0 不内置 Bionic，从 NDK sysroot 提供头文件。
+    const extra_include = if (is_ios)
+        b.fmt(" -isystem {s}/libc/include/any-darwin-any", .{
+            b.graph.zig_lib_directory.path orelse ".",
+        })
+    else if (is_android) blk: {
+        const sysroot = findNdkSysroot(b) orelse
+            @panic("Android target requires ANDROID_NDK_HOME pointing to an installed NDK");
+        break :blk b.fmt(" -isystem {s}/usr/include -isystem {s}/usr/include/{s}", .{
+            sysroot, sysroot, zig_target,
+        });
+    } else "";
+
+    const cc_env = b.fmt("zig cc -target {s}{s}", .{ zig_target, extra_include });
+    const cxx_env = b.fmt("zig c++ -target {s}{s}", .{ zig_target, extra_include });
 
     // ---- 共享：zig-ar / zig-ranlib wrapper 脚本 ----
     // cmake 要求 AR/RANLIB 是单可执行文件，不能用带空格的子命令
@@ -97,6 +115,11 @@ pub fn build(b: *std.Build) void {
         "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY",
         "-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON",
         "-DOPENSSL_NO_ASM=ON",
+        // 跳过 benchmark/test 子目录：其 regex 后端检测在交叉编译下会失败（iOS 必现）；
+        // 且我们只需 ssl/crypto 静态库，不构建测试。CMAKE_MACOSX_BUNDLE=OFF 避免 iOS 下
+        // bssl 可执行文件被当作 MACOSX_BUNDLE 处理。
+        "-DBUILD_TESTING=OFF",
+        "-DCMAKE_MACOSX_BUNDLE=OFF",
         b.fmt("-DCMAKE_AR={s}", .{zig_ar}),
         b.fmt("-DCMAKE_RANLIB={s}", .{zig_ranlib}),
         "-S", bs_src,
@@ -345,4 +368,20 @@ pub fn build(b: *std.Build) void {
     b.default_step.dependOn(&h2_copy.step);
     b.default_step.dependOn(&quic_copy.step);
     b.default_step.dependOn(&h3_copy.step);
+}
+
+/// 从 ANDROID_NDK_HOME 定位 NDK sysroot（$NDK/toolchains/llvm/prebuilt/<host>/sysroot）。
+/// 返回 null 表示未设置 ANDROID_NDK_HOME 或找不到 prebuilt 目录。
+fn findNdkSysroot(b: *std.Build) ?[]const u8 {
+    const ndk_home = b.graph.environ_map.get("ANDROID_NDK_HOME") orelse return null;
+    const prebuilt = b.pathJoin(&.{ ndk_home, "toolchains", "llvm", "prebuilt" });
+    var dir = std.Io.Dir.openDirAbsolute(b.graph.io, prebuilt, .{ .iterate = true }) catch return null;
+    defer dir.close(b.graph.io);
+    var it = dir.iterate();
+    while (it.next(b.graph.io) catch return null) |entry| {
+        if (entry.kind == .directory) {
+            return b.pathJoin(&.{ prebuilt, entry.name, "sysroot" });
+        }
+    }
+    return null;
 }

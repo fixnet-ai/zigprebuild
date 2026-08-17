@@ -10,10 +10,13 @@
 #   -h, --help      显示本帮助
 #
 # 说明:
-#   全量重建 aarch64/x86_64 × linux-musl/windows-gnu/macos-none 共 6 个 target，
+#   全量重建 10 个 target：
+#     aarch64/x86_64 × linux-musl/windows-gnu/macos-none/linux-android
+#     + aarch64 × ios-none（真机）/ios-simulator（模拟器）
 #   将产物（zig-out/<target>/lib/*.a 与 include/*.h）加入 git 并 commit，
 #   默认 push 到当前分支的 upstream。
 #   运行前请先 git submodule update --recursive 更新子模块到目标版本。
+#   Android target 需要 ANDROID_NDK_HOME 指向已安装的 NDK；iOS 需要 Xcode。
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -26,6 +29,10 @@ TARGETS=(
   x86_64-windows-gnu
   aarch64-macos-none
   x86_64-macos-none
+  aarch64-linux-android
+  x86_64-linux-android
+  aarch64-ios-none
+  aarch64-ios-simulator
 )
 DEFAULT_MSG="build: rebuild prebuilt static libraries"
 
@@ -40,9 +47,10 @@ usage() {
   -h, --help      显示本帮助
 
 说明:
-  全量重建 aarch64/x86_64 × linux-musl/windows-gnu/macos-none 共 6 个 target，
+  全量重建 10 个 target（含 Android arm64/x86_64、iOS 真机/模拟器），
   产物写入 zig-out/<target>/，加入 git 后 commit，默认 push 到 upstream。
   运行前请先 git submodule update --recursive 更新子模块到目标版本。
+  Android target 需要 ANDROID_NDK_HOME；iOS 需要 Xcode。
 EOF
 }
 
@@ -67,6 +75,15 @@ done
   echo "错误: boringssl 子模块未初始化，请先 git submodule update --init --recursive"
   exit 1
 }
+# Android target 需要 NDK（build.zig 通过 ANDROID_NDK_HOME 定位 Bionic 头文件）
+case " ${TARGETS[*]} " in
+  *android*)
+    [ -n "${ANDROID_NDK_HOME:-}" ] || {
+      echo "错误: Android target 需要 ANDROID_NDK_HOME 指向已安装的 NDK"
+      exit 1
+    }
+    ;;
+esac
 
 echo "==> 构建 ${#TARGETS[@]} 个 target：${TARGETS[*]}"
 echo "==> 清理旧 build 目录：$([ "$CLEAN" = 1 ] && echo 是 || echo 否)"
@@ -80,7 +97,7 @@ for t in "${TARGETS[@]}"; do
 done
 
 # ---- 提交 ----
-git add build.zig .gitignore zig-out
+git add build.zig .gitignore release.sh README.md progress.md zig-out
 if git diff --cached --quiet; then
   echo
   echo "==> 无内容变更（产物与上次相同），跳过 commit/push"

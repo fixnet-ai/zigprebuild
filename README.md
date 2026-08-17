@@ -8,7 +8,7 @@ BoringSSL、nghttp2、ngtcp2、nghttp3、libyaml、libmdbx、lwIP 从官方 rele
 
 - **一次构建，多处复用** — 消费项目只链接预编译 `.a` 文件，不运行 cmake
 - **版本锁定** — 通过 git submodule 指向各库的正式 release tag，构建可复现
-- **跨平台** — 同一套构建逻辑产出 macOS / Linux / Windows 多平台产物
+- **跨平台** — 同一套构建逻辑产出 macOS / Linux / Windows / Android / iOS 多平台产物
 
 ## 包含的库
 
@@ -40,6 +40,14 @@ zig build
 zig build -Dtarget=aarch64-linux-musl
 zig build -Dtarget=x86_64-linux-musl
 zig build -Dtarget=x86_64-windows-gnu
+
+# Android（需要 ANDROID_NDK_HOME 指向已安装的 NDK）
+zig build -Dtarget=aarch64-linux-android
+zig build -Dtarget=x86_64-linux-android
+
+# iOS（需要 Xcode）
+zig build -Dtarget=aarch64-ios-none          # 真机
+zig build -Dtarget=aarch64-ios-simulator     # 模拟器
 ```
 
 ### 产物结构
@@ -109,6 +117,8 @@ module.addCSourceFiles(.{ .root = pb.path("lwip/src"), .files = &sources });
 
 - Zig 0.16.0+
 - cmake + Ninja
+- Android 交叉编译：`ANDROID_NDK_HOME` 指向已安装的 Android NDK（提供 Bionic 头文件）
+- iOS 交叉编译：Xcode（`xcrun` 提供 iOS SDK）
 
 ## 更新子模块
 

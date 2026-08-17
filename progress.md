@@ -1,5 +1,19 @@
 # Progress Log — zigprebuild
 
+## 2026-08-18: v0.25.0 — 新增 Android / iOS 预编译支持 ✅
+
+- **Status:** complete
+- 新增 4 个 target，release.sh TARGETS 从 6 → 10：
+  - `aarch64-linux-android`（arm64-v8a）、`x86_64-linux-android`（x86_64）
+  - `aarch64-ios-none`（真机）、`aarch64-ios-simulator`（模拟器）
+- 关键发现：zig 0.16.0 对 `.ios` 与 `.linux` + `.android`（Bionic）目标**不自动提供 libc 头文件**（`sys/types.h` 找不到），需在 `CC`/`CXX` 环境变量手动补 `-isystem`：
+  - **iOS** → zig 内置 darwin libc 头文件 `libc/include/any-darwin-any`（与 macOS 同源；zig 对 `.ios` 不加该路径，期望外部 SDK）
+  - **Android** → NDK sysroot 的 Bionic 头文件 `$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/<host>/sysroot/usr/include`（含 `<arch>-linux-android` 子目录）
+- cmake 映射：iOS 用 `CMAKE_SYSTEM_NAME=iOS`，Android 用 `CMAKE_SYSTEM_NAME=Linux`（避免 NDK 查找报错）
+- BoringSSL 统一加 `-DBUILD_TESTING=OFF`（跳过 benchmark 的 regex 检测，交叉编译必现失败）+ `-DCMAKE_MACOSX_BUNDLE=OFF`
+- build.zig 新增 `findNdkSysroot()`（从 `ANDROID_NDK_HOME` 遍历 `toolchains/llvm/prebuilt/` 定位 sysroot）；`zig_target` 改用 `@tagName(abi)` 统一生成三元组
+- 验证：4 个新平台 BoringSSL/nghttp2/ngtcp2/nghttp3 全部编译通过，产物架构正确（ELF aarch64/x86_64、Mach-O arm64）
+
 ## 2026-08-12: v0.24.0 — 新增 lwIP、libmdbx、lmdbx-zig、cpu_model submodule ✅
 
 - **Status:** complete
