@@ -1,6 +1,6 @@
 [submodule "boringssl"]
 	path = boringssl
-	url = https://github.com/google/boringssl.git
+	url = https://github.com/fixnet-ai/boringssl.git
 	branch = main
 [submodule "ngtcp2"]
 	path = ngtcp2
