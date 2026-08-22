@@ -14,7 +14,8 @@ const std = @import("std");
 /// 并链接 zig-out/<target>/lib/*.a 即可，无需运行 cmake。
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
+    // 默认 ReleaseSafe（用户级 CLAUDE.md「构建模式（强制）」）；调试用 -Doptimize=Debug
+    const optimize = b.option(std.builtin.OptimizeMode, "optimize", "Prioritize performance, safety, or binary size") orelse .ReleaseSafe;
 
     // ---- 平台映射 ----
     const cmake_system = switch (target.result.os.tag) {
