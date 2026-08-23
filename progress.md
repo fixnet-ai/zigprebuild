@@ -1,5 +1,7 @@
 # Progress Log — zigprebuild
 
+> C 库预编译管理，无待办任务；统一规划见 zigbox task_plan.md『跨项目统一待办』。
+
 ## 2026-08-18: v0.25.0 — 新增 Android / iOS 预编译支持 ✅
 
 - **Status:** complete
