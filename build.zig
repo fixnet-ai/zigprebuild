@@ -18,6 +18,11 @@ pub fn build(b: *std.Build) void {
     const optimize = b.option(std.builtin.OptimizeMode, "optimize", "Prioritize performance, safety, or binary size") orelse .ReleaseSafe;
 
     // ---- 平台映射 ----
+    // Android 目标（os=linux + abi=android）映射 CMAKE_SYSTEM_NAME=Linux 而非 Android：
+    //   cmake 识别 Android 会走 NDK toolchain 查找流程导致报错，映射 Linux 可复用 zig cc
+    //   交叉工具链；iOS 则用 CMAKE_SYSTEM_NAME=iOS。
+    // （注：libc 头文件 -isystem、三元组 @tagName(abi)、BoringSSL -DBUILD_TESTING=OFF 等
+    //   要点已在本文件 :52-66 / :41-47 / :124-127 有注释，无需重复添加）
     const cmake_system = switch (target.result.os.tag) {
         .macos => "Darwin",
         .ios => "iOS",
