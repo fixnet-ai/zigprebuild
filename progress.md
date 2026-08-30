@@ -14,6 +14,16 @@
 | v0.24.0 | 2026-08-12 | 新增 lwIP / libmdbx / lmdbx-zig / cpu_model submodule |
 | v0.23.0 | 2026-08-09 | 项目初始化 |
 
+## 最新改动（未发 tag）— BoringSSL 启用汇编加速（2026-08-30，zigbox #120/#121/#122）
+
+- **背景**：原 `-DOPENSSL_NO_ASM=ON` 无条件启用 → 全部平台纯 C 编译（AES-NI/aesv8/ghash-neon/ChaCha20_neon 全禁），TLS/QUIC 加密走 C 路径。根因 = build.zig 只设 CC/CXX，未设 `CMAKE_ASM_COMPILER` → CMake 落回宿主 as 交叉失败。
+- **改动（build.zig）**：
+  1. `setup_wrappers` 生成 `build/wrappers/zig-asm`（`exec zig cc -target <target> "$@"`）——zig cc 集成汇编器原生支持 `.S` 预处理+汇编，3 平台 44 文件实测 0 失败。
+  2. configure 参数化 `asm_arg`：非 Windows x86_64 → `-DCMAKE_ASM_COMPILER=<zig-asm>`（boringssl 顶层 CMakeLists `enable_language(ASM)` + include_directories 自动附加）；Windows x86/x86_64 → 保留 `-DOPENSSL_NO_ASM=ON`（.asm 需 NASM）；aarch64-windows 走 ASM 不受影响。
+- **产物验证（aarch64-macos）**：CMakeCache `CMAKE_ASM_COMPILER_WORKS=1` + `aesv8-armv8-apple`/`ghash-neon-armv8-apple`/`ghashv8-armv8-apple`/`bn-armv8-apple`/`p256-armv8-asm-apple` 全部编译进 fipsmodule + nm 确认 `_ChaCha20_ctr32_neon`/`_gcm_init_v8`/`_gcm_ghash_v8`/`_gcm_ghash_neon`/`_vpaes_*` 全定义。
+- **性能收益**（重编 zigoutbounds 后协议级 bench-tcp，CPU 满载=每字节成本受限）：trojan +10.3% / anytls +6.8% / vless-reality +5.5% / hysteria2 +6.0% / tuic +13.1%；对照 vless（纯 TCP 无加密）-0.8% 噪声内无变化 = 无副作用。全 PASS 无回归。完整报表 zigbox `pref-2026-08-30-boringssl-asm.md`。
+- **经验（Zig 0.16）**：`std.ArrayList([]const u8)` 是 unmanaged（`array_list.Aligned(...,null)`）无 `init(gpa)`；b.fmt 是 Zig fmt 非 printf（`{s}` 非 `%s`）——build.zig 参数数组改用 if 表达式单值，勿用 ArrayList 拼接。
+
 ## v0.25.0 — 新增 Android / iOS 预编译支持 ✅
 
 - release.sh TARGETS 6 → 10：`aarch64/x86_64-linux-android`、`aarch64-ios-none`、`aarch64-ios-simulator`

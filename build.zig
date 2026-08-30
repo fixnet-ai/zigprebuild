@@ -68,8 +68,12 @@ pub fn build(b: *std.Build) void {
     const cc_env = b.fmt("zig cc -target {s}{s}", .{ zig_target, extra_include });
     const cxx_env = b.fmt("zig c++ -target {s}{s}", .{ zig_target, extra_include });
 
-    // ---- 共享：zig-ar / zig-ranlib wrapper 脚本 ----
-    // cmake 要求 AR/RANLIB 是单可执行文件，不能用带空格的子命令
+    // ---- 共享：zig-ar / zig-ranlib / zig-asm wrapper 脚本 ----
+    // cmake 要求 AR/RANLIB/ASM 编译器是单可执行文件，不能用带空格的子命令。
+    // zig-asm = BoringSSL 汇编编译器（2026-08-30）：CMAKE_ASM_COMPILER 指向它，
+    // 内部 exec `zig cc -target <target>`（zig cc 集成汇编器支持 .S 预处理+汇编，
+    // 3 平台 44 个 .S 实测全过；boringssl 顶层 CMakeLists enable_language(ASM) 时
+    // 用它编译 gen/ 下 checked-in 的 .S，CMake 自动附加 include_directories）。
     const setup_wrappers = b.addSystemCommand(&.{
         "sh", "-c",
         b.fmt(
@@ -78,8 +82,9 @@ pub fn build(b: *std.Build) void {
             \\mkdir -p build/wrappers
             \\printf '#!/bin/sh\nexec %s ar "$@"\n' "$ZIG" > build/wrappers/zig-ar
             \\printf '#!/bin/sh\nexec %s ranlib "$@"\n' "$ZIG" > build/wrappers/zig-ranlib
-            \\chmod +x build/wrappers/zig-ar build/wrappers/zig-ranlib
-        , .{}),
+            \\printf '#!/bin/sh\nexec %s cc -target {s} "$@"\n' "$ZIG" > build/wrappers/zig-asm
+            \\chmod +x build/wrappers/zig-ar build/wrappers/zig-ranlib build/wrappers/zig-asm
+        , .{zig_target}),
     });
 
     // ---- 共享：子模块初始化 ----
@@ -99,6 +104,7 @@ pub fn build(b: *std.Build) void {
     const build_root = b.build_root.path orelse ".";
     const zig_ar = b.fmt("{s}/build/wrappers/zig-ar", .{build_root});
     const zig_ranlib = b.fmt("{s}/build/wrappers/zig-ranlib", .{build_root});
+    const zig_asm = b.fmt("{s}/build/wrappers/zig-asm", .{build_root});
 
     // ---- 输出目录 ----
     const out_dir = b.fmt("zig-out/{s}", .{zig_target});
@@ -109,6 +115,15 @@ pub fn build(b: *std.Build) void {
     const bs_src = "boringssl";
     const bs_build_dir = b.fmt("build/{s}/boringssl", .{zig_target});
 
+    // ASM 支持（2026-08-30）：非 Windows x86_64 target 走 CMake enable_language(ASM)
+    // + CMAKE_ASM_COMPILER=zig-asm（zig cc 编 .S，实测 3 平台 44 文件 0 失败）。
+    // Windows x86/x86_64 走 ASM_NASM（.asm 需 NASM，zig cc 不编）→ 保留 NO_ASM。
+    // aarch64-windows 走 ASM（armv8-win.S 存在）不受影响。
+    const is_win_x64 = target.result.os.tag == .windows and target.result.cpu.arch == .x86_64;
+    const asm_arg: []const u8 = if (!is_win_x64)
+        b.fmt("-DCMAKE_ASM_COMPILER={s}", .{zig_asm})
+    else
+        "-DOPENSSL_NO_ASM=ON";
     const bs_configure = b.addSystemCommand(&.{
         "cmake",
         "-B", bs_build_dir,
@@ -120,7 +135,7 @@ pub fn build(b: *std.Build) void {
         b.fmt("-DCMAKE_SYSTEM_PROCESSOR={s}", .{cmake_processor}),
         "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY",
         "-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON",
-        "-DOPENSSL_NO_ASM=ON",
+        asm_arg,
         // 跳过 benchmark/test 子目录：其 regex 后端检测在交叉编译下会失败（iOS 必现）；
         // 且我们只需 ssl/crypto 静态库，不构建测试。CMAKE_MACOSX_BUNDLE=OFF 避免 iOS 下
         // bssl 可执行文件被当作 MACOSX_BUNDLE 处理。
