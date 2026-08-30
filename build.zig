@@ -115,15 +115,17 @@ pub fn build(b: *std.Build) void {
     const bs_src = "boringssl";
     const bs_build_dir = b.fmt("build/{s}/boringssl", .{zig_target});
 
-    // ASM 支持（2026-08-30）：非 Windows x86_64 target 走 CMake enable_language(ASM)
-    // + CMAKE_ASM_COMPILER=zig-asm（zig cc 编 .S，实测 3 平台 44 文件 0 失败）。
-    // Windows x86/x86_64 走 ASM_NASM（.asm 需 NASM，zig cc 不编）→ 保留 NO_ASM。
-    // aarch64-windows 走 ASM（armv8-win.S 存在）不受影响。
+    // ASM 支持（2026-08-30 起）：
+    //   - 非 Windows x86/x86_64 target → CMake enable_language(ASM) +
+    //     CMAKE_ASM_COMPILER=zig-asm（zig cc 编 .S，实测 3 平台 44 文件 0 失败）。
+    //   - Windows x86/x86_64 → 汇编为 .asm（NASM 语法），zig cc 集成汇编器不认，
+    //     需 NASM 交叉汇编器（nasm -f win64，host 上直接跑）。有 NASM →
+    //     -DCMAKE_ASM_NASM_COMPILER 全量 ASM（AES-NI+PCLMULQDQ 对 AES-GCM 3-5×，主优化目标）；
+    //     无 NASM → 降级 NO_ASM（纯 C）并告警。aarch64-windows 汇编 = .S（armv8-win.S）走 zig-asm 不受影响。
+    const is_win_x86 = target.result.os.tag == .windows and target.result.cpu.arch == .x86;
     const is_win_x64 = target.result.os.tag == .windows and target.result.cpu.arch == .x86_64;
-    const asm_arg: []const u8 = if (!is_win_x64)
-        b.fmt("-DCMAKE_ASM_COMPILER={s}", .{zig_asm})
-    else
-        "-DOPENSSL_NO_ASM=ON";
+    const is_win_nasm = is_win_x86 or is_win_x64;
+    const nasm_path = findNasm(b);
     const bs_configure = b.addSystemCommand(&.{
         "cmake",
         "-B", bs_build_dir,
@@ -135,7 +137,6 @@ pub fn build(b: *std.Build) void {
         b.fmt("-DCMAKE_SYSTEM_PROCESSOR={s}", .{cmake_processor}),
         "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY",
         "-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON",
-        asm_arg,
         // 跳过 benchmark/test 子目录：其 regex 后端检测在交叉编译下会失败（iOS 必现）；
         // 且我们只需 ssl/crypto 静态库，不构建测试。CMAKE_MACOSX_BUNDLE=OFF 避免 iOS 下
         // bssl 可执行文件被当作 MACOSX_BUNDLE 处理。
@@ -145,6 +146,22 @@ pub fn build(b: *std.Build) void {
         b.fmt("-DCMAKE_RANLIB={s}", .{zig_ranlib}),
         "-S", bs_src,
     });
+    // ASM 参数（2026-08-30）：Windows x86/x86_64 .asm 需 NASM；有 → ASM_NASM_COMPILER +
+    // NO_ASM=OFF（显式覆盖旧 cache 残留）；无 → 降级 NO_ASM=ON + 告警。其他平台 → zig-asm + OFF。
+    // 显式 OFF 是必须的：增量 configure 复用旧 CMakeCache，历史构建若传过 ON 会残留，
+    // 顶层 CMakeLists 门控 if(NOT OPENSSL_NO_ASM) 跳过 enable_language(ASM/ASM_NASM) → 汇编静默不编。
+    if (is_win_nasm) {
+        if (nasm_path) |np| {
+            bs_configure.addArg(b.fmt("-DCMAKE_ASM_NASM_COMPILER={s}", .{np}));
+            bs_configure.addArg("-DOPENSSL_NO_ASM=OFF");
+        } else {
+            std.log.warn("nasm not found: Windows x86/x86_64 BoringSSL falls back to OPENSSL_NO_ASM (pure C). Install nasm (brew install nasm) or set NASM env var for full ASM acceleration.", .{});
+            bs_configure.addArg("-DOPENSSL_NO_ASM=ON");
+        }
+    } else {
+        bs_configure.addArg(b.fmt("-DCMAKE_ASM_COMPILER={s}", .{zig_asm}));
+        bs_configure.addArg("-DOPENSSL_NO_ASM=OFF");
+    }
     bs_configure.step.dependOn(&setup_wrappers.step);
     bs_configure.setEnvironmentVariable("CC", cc_env);
     // BoringSSL 的 crypto/ssl 库主体是 C++（.cc 源文件），必须设置 CXX，
@@ -389,6 +406,27 @@ pub fn build(b: *std.Build) void {
     b.default_step.dependOn(&h2_copy.step);
     b.default_step.dependOn(&quic_copy.step);
     b.default_step.dependOn(&h3_copy.step);
+}
+
+/// 定位 NASM 汇编器（Windows x86/x86_64 的 BoringSSL .asm 需要 NASM 交叉汇编）。
+/// 优先 NASM 环境变量，其次 PATH 中的 nasm/nasm.exe。找不到返回 null。
+/// 注意：NASM 是纯汇编器，输出格式由 -f win64/win32 指定，host 上直接跑即可交叉编 Windows .asm。
+fn findNasm(b: *std.Build) ?[]const u8 {
+    if (b.graph.environ_map.get("NASM")) |np| {
+        if (np.len > 0) return np;
+    }
+    const path = b.graph.environ_map.get("PATH") orelse return null;
+    var it = std.mem.splitAny(u8, path, ":;"); // host PATH 分隔符（POSIX ':' / Windows ';'）
+    while (it.next()) |dir| {
+        if (dir.len == 0) continue;
+        for ([_][]const u8{ "nasm", "nasm.exe" }) |name| {
+            var buf: [4096]u8 = undefined;
+            const cand = std.fmt.bufPrintZ(&buf, "{s}/{s}", .{ dir, name }) catch continue;
+            if (std.c.access(cand, 1) == 0) // X_OK
+                return b.allocator.dupe(u8, std.mem.sliceTo(cand, 0)) catch return null;
+        }
+    }
+    return null;
 }
 
 /// 从 ANDROID_NDK_HOME 定位 NDK sysroot（$NDK/toolchains/llvm/prebuilt/<host>/sysroot）。
