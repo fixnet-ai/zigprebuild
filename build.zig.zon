@@ -8,5 +8,8 @@
         "build.zig",
         "build.zig.zon",
         "yaml_c.zig",
+        // lwip/ 必须被 zig 缓存跟踪：zigbox/zigtun 直接编译此目录 C 源，
+        // 不在 .paths 则改 lwip 源码不会触发重编译（tun-5 IPv6 修复期间实测）。
+        "lwip",
     },
 }
