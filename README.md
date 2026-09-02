@@ -122,10 +122,28 @@ module.addCSourceFiles(.{ .root = pb.path("lwip/src"), .files = &sources });
 
 ## 更新子模块
 
+9 个子模块分两类，升级前先分清（`git submodule status` + `git -C <库> remote -v`）。
+
+**fork 子模块（fixnet-ai 维护，带生态独有改动，勿从上游直接 checkout）**：
+ngtcp2（Brutal 拥塞控制）、boringssl（Apple weak-symbol c-bridge 覆盖等）、
+lmdbx-zig、lwIP（lwip_compat 等）。上游出新版本时由 fixnet-ai 在 fork 侧 rebase
+独有改动，**消费方只 bump 指针到 fork 的新提交/tag**——本机 `origin` 若仍指上游
+（历史 clone 遗留，.gitmodules 已声明 fork 为真相源），先 `git -C <库> remote set-url origin <fork url>`
+再 fetch：
+
 ```bash
-# 更新到最新 release
-cd ngtcp2 && git fetch --tags && git checkout v<new_version> && cd ..
-git add ngtcp2 && git commit -m "chore: update ngtcp2 to v<new_version>"
+git -C ngtcp2 remote set-url origin https://github.com/fixnet-ai/ngtcp2.git  # 仅 origin 指上游时
+git -C ngtcp2 fetch origin
+git -C ngtcp2 checkout <fork 的新 commit sha 或 fork 分支>
+git add ngtcp2 && git commit -m "chore: bump ngtcp2 submodule"
+```
+
+**上游直引子模块（无本地改动）**：nghttp3 / nghttp2 / libyaml / libmdbx / cpu_model，
+可直接按官方 release tag 升级：
+
+```bash
+cd nghttp3 && git fetch --tags && git checkout v<new_version> && cd ..
+git add nghttp3 && git commit -m "chore: update nghttp3 to v<new_version>"
 ```
 
 ## 许可
