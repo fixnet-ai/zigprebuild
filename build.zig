@@ -385,8 +385,12 @@ pub fn build(b: *std.Build) void {
     yaml_c_mod.addIncludePath(b.path("libyaml/src"));
     yaml_c_mod.addIncludePath(b.path("libyaml/include"));
 
-    // 交叉编译时添加 sysroot include path
-    if (b.sysroot) |s| {
+    // 交叉编译时添加 sysroot include path。
+    // b.sysroot 不会跨消费者 build 图传播：只有显式声明 -Dsysroot 的仓（如 zigfoundation）
+    // 才能让本图拿到；其余消费者（zigoutbounds/zigbox）android 目标回退 ANDROID_NDK_HOME
+    // （与本文件 cmake CC 的 findNdkSysroot 同源，android 下本就强制要求该环境变量）。
+    const yaml_sysroot = b.sysroot orelse (if (is_android) findNdkSysroot(b) else null);
+    if (yaml_sysroot) |s| {
         const sysroot_include = b.pathJoin(&.{ s, "usr", "include" });
         yaml_c_mod.addSystemIncludePath(.{ .cwd_relative = sysroot_include });
         const common_android_archs = [_][]const u8{
