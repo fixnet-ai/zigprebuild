@@ -405,6 +405,19 @@ pub fn build(b: *std.Build) void {
         }
     }
 
+    // iOS：zig 0.16.0 对 .ios 目标不自动加入内置 darwin libc 头目录（期望外部 SDK），
+    // C 源会报 stdlib.h not found。与上方 cmake CC 注入的 -isystem 同源，手动补
+    // any-darwin-any（与 macOS 同源的头目录，含 TargetConditionals.h）。
+    if (is_ios) {
+        const darwin_include = b.pathJoin(&.{
+            b.graph.zig_lib_directory.path orelse ".",
+            "libc",
+            "include",
+            "any-darwin-any",
+        });
+        yaml_c_mod.addSystemIncludePath(.{ .cwd_relative = darwin_include });
+    }
+
     // ---- 默认构建目标：全部 5 个库 ----
     b.default_step.dependOn(&bs_copy.step);
     b.default_step.dependOn(&h2_copy.step);
