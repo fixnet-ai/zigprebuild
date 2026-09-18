@@ -8,6 +8,7 @@
 
 | 版本 | 日期 | 内容 |
 |------|------|------|
+| v0.35.0 | 2026-09-19 | NNG v1.12.3 出库 + nng_c 绑定模块（10 target 静态库；钉 stable tag，`main` 是 2.0-beta 禁用；musl 下 `-DNNG_HAVE_ARC4RANDOM=OFF` 走 getrandom 分支） |
 | v0.34.0 | 2026-09-02 | 11 仓统一里程碑 tag（本仓 v0.33.0 后仅 2 lwip 子模块纯指针 bump，无 patch tag；明细见下方「决策定论」） |
 | v0.33.0 | 2026-09-01 | 里程碑整理（tag 已切 a0dbcf8，含 BoringSSL 汇编加速） |
 | v0.25.0 | 2026-08-18 | Android / iOS 预编译支持（技术要点已落 build.zig 注释） |

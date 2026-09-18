@@ -1,7 +1,7 @@
 # zigprebuild
 
 跨平台 C 静态库预编译项目。通过 cmake + zig cc（或 Zig 原生编译）将
-BoringSSL、nghttp2、ngtcp2、nghttp3、libyaml、libmdbx、lwIP 从官方 release 源码交叉编译，
+BoringSSL、nghttp2、ngtcp2、nghttp3、NNG、libyaml、libmdbx、lwIP 从官方 release 源码交叉编译，
 供 zigbox 生态各项目直接链接使用。
 
 ## 设计目标
@@ -18,6 +18,7 @@ BoringSSL、nghttp2、ngtcp2、nghttp3、libyaml、libmdbx、lwIP 从官方 rele
 | [nghttp2](https://github.com/nghttp2/nghttp2) | v1.70.0 | HTTP/2 帧层 | — |
 | [ngtcp2](https://github.com/ngtcp2/ngtcp2) | v1.25.0 | QUIC 传输层 | BoringSSL |
 | [nghttp3](https://github.com/ngtcp2/nghttp3) | v1.18.0 | HTTP/3 帧层 | — |
+| [NNG](https://github.com/nanomsg/nng) | v1.12.3 | 消息库 / IPC 底座（REQ/REP/PAIR over ipc/tcp） | — |
 | [libyaml](https://github.com/yaml/libyaml) | v0.2.5 | YAML 解析 | — |
 | [libmdbx](https://github.com/Mithril-mine/libmdbx) | v0.14.2 | KV 数据库（DNS 持久化） | cpu_model |
 | [lmdbx-zig](https://github.com/fixnet-ai/lmdbx-zig) | v0.4.1 | libmdbx Zig 封装 | libmdbx, cpu_model |
@@ -61,14 +62,25 @@ zig-out/<target>/
     libngtcp2.a                    # QUIC 传输
     libngtcp2_crypto_boringssl.a   # ngtcp2 BoringSSL 后端
     libnghttp3.a                   # HTTP/3
+    libnng.a                       # NNG 消息库
   include/
     openssl/                       # BoringSSL 头文件
     nghttp2/                       # nghttp2 头文件
     ngtcp2/                        # ngtcp2 头文件
     nghttp3/                       # nghttp3 头文件
+    nng/                           # NNG 头文件
 ```
 
 libyaml（轻量库）通过 Zig 模块暴露，无独立 `.a` 文件（通过 `addCSourceFiles` 嵌入消费模块）。
+
+NNG（重量库）额外提供 `nng_c` Zig 绑定模块（translate-c 产物的逐符号
+curated re-export，照 yaml_c 形状）；静态库仍需消费方自行链接：
+
+```zig
+module.addImport("nng_c", prebuild_dep.module("nng_c"));
+module.addObjectFile(prebuild_dep.path(b.fmt("{s}/lib/libnng.a", .{out})));
+module.addIncludePath(prebuild_dep.path(b.fmt("{s}/include", .{out})));
+```
 
 ### 在消费项目中使用
 
@@ -122,7 +134,7 @@ module.addCSourceFiles(.{ .root = pb.path("lwip/src"), .files = &sources });
 
 ## 更新子模块
 
-9 个子模块分两类，升级前先分清（`git submodule status` + `git -C <库> remote -v`）。
+10 个子模块分两类，升级前先分清（`git submodule status` + `git -C <库> remote -v`）。
 
 **fork 子模块（fixnet-ai 维护，带生态独有改动，勿从上游直接 checkout）**：
 ngtcp2（Brutal 拥塞控制）、boringssl（Apple weak-symbol c-bridge 覆盖等）、
@@ -138,8 +150,8 @@ git -C ngtcp2 checkout <fork 的新 commit sha 或 fork 分支>
 git add ngtcp2 && git commit -m "chore: bump ngtcp2 submodule"
 ```
 
-**上游直引子模块（无本地改动）**：nghttp3 / nghttp2 / libyaml / libmdbx / cpu_model，
-可直接按官方 release tag 升级：
+**上游直引子模块（无本地改动）**：nghttp3 / nghttp2 / libyaml / libmdbx / cpu_model / nng，
+可直接按官方 release tag 升级（nng 钉 stable tag——`main` 是 2.0-beta，禁用）：
 
 ```bash
 cd nghttp3 && git fetch --tags && git checkout v<new_version> && cd ..

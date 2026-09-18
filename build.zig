@@ -2,7 +2,7 @@ const std = @import("std");
 
 /// zigprebuild — 跨平台 C 库预编译静态库
 ///
-/// 将 BoringSSL / nghttp2 / ngtcp2 / nghttp3 / libyaml 从官方 release 源码
+/// 将 BoringSSL / nghttp2 / ngtcp2 / nghttp3 / NNG / libyaml 从官方 release 源码
 /// 通过 cmake + zig cc（或 Zig 原生编译）交叉编译为多平台产物。
 /// 重量库输出到 zig-out/<target>/lib/ 和 zig-out/<target>/include/；
 /// 轻量库（libyaml）通过 addModule("yaml_c") 暴露 Zig 模块。
@@ -349,7 +349,67 @@ pub fn build(b: *std.Build) void {
     h3_copy.step.dependOn(&h3_build.step);
 
     // ================================================================
-    // 5. libyaml（JSON 配置解析，Zig 原生编译，无 cmake 依赖）
+    // 5. NNG（nanomsg-next-gen 消息库，IPC 底座；纯 C 无加密依赖）
+    // ================================================================
+    const nng_src = "nng";
+    const nng_build_dir = b.fmt("build/{s}/nng", .{zig_target});
+
+    // 纯 C 项目：无 CXX、无 GOWORK、无 ASM、无嵌套子模块。
+    const nng_configure = b.addSystemCommand(&.{
+        "cmake",
+        "-B", nng_build_dir,
+        "-GNinja",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DBUILD_SHARED_LIBS=OFF",
+        "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
+        b.fmt("-DCMAKE_SYSTEM_NAME={s}", .{cmake_system}),
+        b.fmt("-DCMAKE_SYSTEM_PROCESSOR={s}", .{cmake_processor}),
+        "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY",
+        "-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON",
+        b.fmt("-DCMAKE_AR={s}", .{zig_ar}),
+        b.fmt("-DCMAKE_RANLIB={s}", .{zig_ranlib}),
+        // NNG 专属：关测试/工具/nngcat/nanomsg 兼容层（NNG_ENABLE_TLS 默认 OFF 不传）
+        "-DNNG_TESTS=OFF",
+        "-DNNG_TOOLS=OFF",
+        "-DNNG_ENABLE_NNGCAT=OFF",
+        "-DNNG_ENABLE_COMPAT=OFF",
+        "-S", nng_src,
+    });
+    nng_configure.step.dependOn(&setup_wrappers.step);
+    nng_configure.setEnvironmentVariable("CC", cc_env);
+    // musl 下覆盖 arc4random 探测结果：NNG 的 nng_check_func 是纯链接探测，
+    // zig 内置 musl 库有 arc4random 符号但头文件不声明 → 正式编译报
+    // implicit-declaration 错。置 OFF 走 getrandom 分支（sys/random.h 无条件
+    // 声明，musl 1.2.5 实测）。bionic/macOS/iOS 的 arc4random 正常，不动。
+    if (target.result.os.tag == .linux and target.result.abi == .musl) {
+        nng_configure.addArg("-DNNG_HAVE_ARC4RANDOM=OFF");
+    }
+
+    const nng_build = b.addSystemCommand(&.{
+        "cmake", "--build", nng_build_dir, "--target", "nng", "--config", "Release",
+    });
+    nng_build.step.dependOn(&nng_configure.step);
+
+    const nng_copy = b.addSystemCommand(&.{
+        "sh", "-c",
+        b.fmt(
+            \\set -e
+            \\mkdir -p "{0s}/lib" "{0s}/include"
+            \\# NNG 的 ARCHIVE_OUTPUT_DIRECTORY = cmake 二进制目录（build/<t>/nng/）
+            \\cp {1s}/libnng.a "{0s}/lib/"
+            \\cp -R {2s}/include/nng "{0s}/include/"
+            \\echo "Built NNG: {0s}/"
+        , .{ out_dir, nng_build_dir, nng_src }),
+    });
+    nng_copy.step.dependOn(&nng_build.step);
+
+    // 独立 step：只建 NNG（`zig build nng -Dtarget=<t>`），避免连带全量重建
+    // boringssl 全家（release.sh 会 rm -rf 全部 build 目录，单库迭代勿用）。
+    const nng_step = b.step("nng", "Build NNG only");
+    nng_step.dependOn(&nng_copy.step);
+
+    // ================================================================
+    // 6. libyaml（JSON 配置解析，Zig 原生编译，无 cmake 依赖）
     // ================================================================
     const yaml_c_mod = b.addModule("yaml_c", .{
         .root_source_file = b.path("yaml_c.zig"),
@@ -418,11 +478,31 @@ pub fn build(b: *std.Build) void {
         yaml_c_mod.addSystemIncludePath(.{ .cwd_relative = darwin_include });
     }
 
-    // ---- 默认构建目标：全部 5 个库 ----
+    // ================================================================
+    // 7. nng_c（NNG Zig 绑定模块；静态库由消费方链接 zig-out/<t>/lib/libnng.a）
+    // ================================================================
+    const nng_c_mod = b.addModule("nng_c", .{
+        .root_source_file = b.path("nng_c.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // translate-c: nng.h → Zig 类型绑定（native target，类型定义跨平台通用）。
+    // nng.h 自包含（只依赖 stdbool/stddef/stdint），无需额外头路径。
+    const nng_h = b.addTranslateC(.{
+        .root_source_file = b.path("nng/include/nng/nng.h"),
+        .target = b.resolveTargetQuery(.{}),
+        .optimize = optimize,
+    });
+    nng_h.addIncludePath(b.path("nng/include"));
+    nng_c_mod.addImport("nng_h_internal", nng_h.createModule());
+
+    // ---- 默认构建目标：全部 6 个库 ----
     b.default_step.dependOn(&bs_copy.step);
     b.default_step.dependOn(&h2_copy.step);
     b.default_step.dependOn(&quic_copy.step);
     b.default_step.dependOn(&h3_copy.step);
+    b.default_step.dependOn(&nng_copy.step);
 }
 
 /// 定位 NASM 汇编器（Windows x86/x86_64 的 BoringSSL .asm 需要 NASM 交叉汇编）。
