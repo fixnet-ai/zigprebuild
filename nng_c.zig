@@ -71,6 +71,9 @@ pub const NNG_OPT_PEER_PID = nng_h.NNG_OPT_PEER_PID;
 pub const NNG_OPT_PEER_UID = nng_h.NNG_OPT_PEER_UID;
 pub const NNG_OPT_PEER_GID = nng_h.NNG_OPT_PEER_GID;
 pub const NNG_OPT_IPC_PERMISSIONS = nng_h.NNG_OPT_IPC_PERMISSIONS;
+/// Windows 专属：值为指向 SECURITY_DESCRIPTOR 的指针（经 nng_listener_set_ptr 设置），
+/// 非 SDDL 字符串——SDDL 由消费方（zf.ipc）先经 advapi32 转换。
+pub const NNG_OPT_IPC_SECURITY_DESCRIPTOR = nng_h.NNG_OPT_IPC_SECURITY_DESCRIPTOR;
 pub const NNG_OPT_RECVTIMEO = nng_h.NNG_OPT_RECVTIMEO;
 pub const NNG_OPT_SENDTIMEO = nng_h.NNG_OPT_SENDTIMEO;
 /// req.h 中真实名为 NNG_OPT_REQ_RESENDTIME（"req:resend-time"）
@@ -85,9 +88,18 @@ pub extern fn nng_req0_open(s: *nng_h.nng_socket) c_int;
 pub extern fn nng_rep0_open(s: *nng_h.nng_socket) c_int;
 pub extern fn nng_pair1_open(s: *nng_h.nng_socket) c_int;
 pub extern fn nng_pair1_open_poly(s: *nng_h.nng_socket) c_int;
+/// pubsub0/pub.h：PUB 发送端（send = 克隆到全部已连对端，best-effort，
+/// 慢对端丢旧帧——真广播；pair1 poly 实测每帧只投递单 pipe，勿用）
+pub extern fn nng_pub0_open(s: *nng_h.nng_socket) c_int;
+/// pubsub0/sub.h：SUB 订阅端（配合 nng_sub0_socket_subscribe 选topic）
+pub extern fn nng_sub0_open(s: *nng_h.nng_socket) c_int;
+/// pubsub0/sub.h：订阅 topic（buf/sz 为前缀过滤；空串 = 收全部帧）
+pub extern fn nng_sub0_socket_subscribe(s: nng_h.nng_socket, buf: ?*const anyopaque, sz: usize) c_int;
 /// 头文件宏别名（#define nng_req_open nng_req0_open）的真实符号形式
 pub const nng_req_open = nng_req0_open;
 pub const nng_rep_open = nng_rep0_open;
+pub const nng_pub_open = nng_pub0_open;
+pub const nng_sub_open = nng_sub0_open;
 
 // ---- 函数 ----
 pub const nng_close = nng_h.nng_close;
@@ -99,6 +111,8 @@ pub const nng_socket_set_ms = nng_h.nng_socket_set_ms;
 pub const nng_socket_set_size = nng_h.nng_socket_set_size;
 pub const nng_listener_set_int = nng_h.nng_listener_set_int;
 pub const nng_listener_set_string = nng_h.nng_listener_set_string;
+/// 指针型选项（如 NNG_OPT_IPC_SECURITY_DESCRIPTOR）设置用
+pub const nng_listener_set_ptr = nng_h.nng_listener_set_ptr;
 pub const nng_recvmsg = nng_h.nng_recvmsg;
 pub const nng_sendmsg = nng_h.nng_sendmsg;
 pub const nng_msg_alloc = nng_h.nng_msg_alloc;
@@ -116,5 +130,7 @@ pub const nng_ctx_open = nng_h.nng_ctx_open;
 pub const nng_ctx_close = nng_h.nng_ctx_close;
 pub const nng_ctx_sendmsg = nng_h.nng_ctx_sendmsg;
 pub const nng_ctx_recvmsg = nng_h.nng_ctx_recvmsg;
+/// ctx 级超时设置（REQ ctx-per-request 每请求独立超时用）
+pub const nng_ctx_set_ms = nng_h.nng_ctx_set_ms;
 pub const nng_strerror = nng_h.nng_strerror;
 pub const nng_version = nng_h.nng_version;
