@@ -497,6 +497,69 @@ pub fn build(b: *std.Build) void {
     nng_h.addIncludePath(b.path("nng/include"));
     nng_c_mod.addImport("nng_h_internal", nng_h.createModule());
 
+    // ================================================================
+    // 8. brotli_c（brotli decode-only v1.1.0；BoringSSL 证书压缩解压，RFC 8879）
+    // ================================================================
+    // libyaml 同款原生编译模式：addCSourceFiles 直接编 C 源（纯 C99 无外部依赖，
+    // zig cc 全平台可编），无 cmake、无预编译产物，消费者按 target 现编。
+    // 见 brotli/README.md（文件裁剪说明）+ brotli_c.zig（绑定入口）。
+    const brotli_c_mod = b.addModule("brotli_c", .{
+        .root_source_file = b.path("brotli_c.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    brotli_c_mod.link_libc = true;
+    brotli_c_mod.addCSourceFiles(.{
+        .root = b.path("brotli"),
+        .files = &.{
+            "common/constants.c",
+            "common/context.c",
+            "common/dictionary.c",
+            "common/platform.c",
+            "common/shared_dictionary.c",
+            "common/transform.c",
+            "dec/bit_reader.c",
+            "dec/decode.c",
+            "dec/huffman.c",
+            "dec/state.c",
+        },
+        .flags = &.{"-std=c99"},
+    });
+    brotli_c_mod.addIncludePath(b.path("brotli/include"));
+
+    // Android/iOS sysroot include（与上方 libyaml 同源同因：brotli C 源含
+    // stdlib.h/string.h，android 需 NDK sysroot 头、iOS 需 any-darwin-any）。
+    const brotli_sysroot = b.sysroot orelse (if (is_android) findNdkSysroot(b) else null);
+    if (brotli_sysroot) |s| {
+        const brotli_sysroot_include = b.pathJoin(&.{ s, "usr", "include" });
+        brotli_c_mod.addSystemIncludePath(.{ .cwd_relative = brotli_sysroot_include });
+        const brotli_android_archs = [_][]const u8{
+            "aarch64-linux-android",
+            "arm-linux-androideabi",
+            "x86_64-linux-android",
+            "i686-linux-android",
+        };
+        for (brotli_android_archs) |triple| {
+            const arch_inc = b.pathJoin(&.{ s, "usr", "include", triple });
+            brotli_c_mod.addSystemIncludePath(.{ .cwd_relative = arch_inc });
+        }
+    }
+    if (is_ios) {
+        const brotli_darwin_include = b.pathJoin(&.{
+            b.graph.zig_lib_directory.path orelse ".",
+            "libc",
+            "include",
+            "any-darwin-any",
+        });
+        brotli_c_mod.addSystemIncludePath(.{ .cwd_relative = brotli_darwin_include });
+    }
+
+    // brotli_c 模块自带单测（brotli_c_test.zig：往返/容量不足/坏流）
+    const brotli_tests = b.addTest(.{ .root_module = brotli_c_mod });
+    const run_brotli_tests = b.addRunArtifact(brotli_tests);
+    const test_step = b.step("test", "运行 zigprebuild 模块单测（brotli_c）");
+    test_step.dependOn(&run_brotli_tests.step);
+
     // ---- 默认构建目标：全部 6 个库 ----
     b.default_step.dependOn(&bs_copy.step);
     b.default_step.dependOn(&h2_copy.step);
