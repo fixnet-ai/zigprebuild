@@ -2,7 +2,7 @@
 
 跨平台 C 静态库预编译项目。通过 cmake + zig cc（或 Zig 原生编译）将
 BoringSSL、nghttp2、ngtcp2、nghttp3、NNG、libyaml、libmdbx、lwIP 从官方 release 源码交叉编译，
-供 zigbox 生态各项目直接链接使用。
+供 kiss-core 生态各项目直接链接使用。
 
 ## 设计目标
 

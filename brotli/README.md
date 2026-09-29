@@ -8,7 +8,7 @@ TLS 证书压缩（RFC 8879 `compress_certificate`，alg id 2 = brotli）客户�
 
 ## 为什么是 decode-only
 
-zigbox 生态只消费 brotli **解压**（chrome/edge TLS 指纹通告
+kiss-core 生态只消费 brotli **解压**（chrome/edge TLS 指纹通告
 `compress_certificate(brotli)`，服务器发压缩证书时必须能解）。
 编码侧（`c/enc/`）与工具（`c/tools/`）、测试不在依赖面内，按最小 vendor
 原则裁掉；后续若出现编码需求再补。
