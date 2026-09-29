@@ -2,7 +2,7 @@
 
 > v0.33.0 里程碑瘦身：本文件仅存「历史完成总表 + 当前基线 + 决策定论」，无待办任务；
 > 技术细节已迁 build.zig 代码注释与 zigfoundation/zig-codegen.md。项目无 task_plan/findings.md；
-> 统一待办见 zigbox task_plan.md『跨项目统一待办』。
+> 统一待办见 **kiss** task_plan.md『跨项目统一待办』（2026-09-30 生态总入口由内核仓移交 kiss）。
 
 ## 版本完成总表
 
