@@ -582,8 +582,15 @@ fn findNasm(b: *std.Build) ?[]const u8 {
         for ([_][]const u8{ "nasm", "nasm.exe" }) |name| {
             var buf: [4096]u8 = undefined;
             const cand = std.fmt.bufPrintZ(&buf, "{s}/{s}", .{ dir, name }) catch continue;
-            if (std.c.access(cand, 1) == 0) // X_OK
-                return b.allocator.dupe(u8, std.mem.sliceTo(cand, 0)) catch return null;
+            // ⚠️ 必须走 `std.Io.Dir`，**不能**用 `std.c.access`：build script 在 **Linux 宿主**上
+            // 不链 libc，而 `std.c.access` 是 `extern "c"` ⇒ 该宿主上整个 `build.zig` 根本编不过
+            //（`error: dependency on libc must be explicitly specified`，栈顶就是本行）。
+            // ⚠️ 这不是可选的美化：**kiss 的 Linux 产物只能在 Linux 宿主上编**（窗口要 GTK4、
+            // 托盘要 GIO，macOS 给不出 target 的 `.so`）⇒ 该仓必须在 Linux 宿主上可被消费方求值。
+            // 语义等价：`.execute = true` 对应原来的 `X_OK`（`access(cand, 1)`）。
+            // 本文件下面 `findNdkSysroot` 用的就是 `b.graph.io` 这一套，这里只是跟上它。
+            std.Io.Dir.cwd().access(b.graph.io, cand, .{ .execute = true }) catch continue;
+            return b.allocator.dupe(u8, std.mem.sliceTo(cand, 0)) catch return null;
         }
     }
     return null;
