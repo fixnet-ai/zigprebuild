@@ -10,8 +10,9 @@
 #   -h, --help      显示本帮助
 #
 # 说明:
-#   全量重建 10 个 target：
+#   全量重建 11 个 target：
 #     aarch64/x86_64 × linux-musl/windows-gnu/macos-none/linux-android
+#     + aarch64 × linux-gnu（**Linux 桌面版**：gnu 动态，与 musl 档不是可互换的两份）
 #     + aarch64 × ios-none（真机）/ios-simulator（模拟器）
 #   将产物（zig-out/<target>/lib/*.a 与 include/*.h）加入 git 并 commit，
 #   默认 push 到当前分支的 upstream。
@@ -22,9 +23,16 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 # ---- 可配置项 ----
+# ⚠️ **`linux-gnu` 两档不是可选的补充**：Linux 桌面版是 gnu 动态（窗口要 GTK4、托盘要 GIO，
+#    二者在 Ubuntu 上只有 glibc 的 .so），消费方按**真实 abi** 取名去读货架 —— 只有 musl 档时
+#    它们会**静默链错**（aarch64 上 `pthread_mutex_t` musl 40 / glibc 48 ⇒ 抹掉 NNG 结构里的
+#    `epfd` ⇒ `--service` 启动即 `error: InvalidArgument`）。详见 kiss 仓 `docs/ARCHITECTURE.md` §6.3。
+# ⚠️ `x86_64-linux-gnu` **先不列**：仓里没有它的货架，且当前没有任何机器能验它 ——
+#    本列表的约定是「**列出来的档都有入库货架**」，别只登记不产（那会让 release.sh 跑出一份没人验过的档）。
 TARGETS=(
   aarch64-linux-musl
   x86_64-linux-musl
+  aarch64-linux-gnu
   aarch64-windows-gnu
   x86_64-windows-gnu
   aarch64-macos-none
@@ -47,7 +55,7 @@ usage() {
   -h, --help      显示本帮助
 
 说明:
-  全量重建 10 个 target（含 Android arm64/x86_64、iOS 真机/模拟器），
+  全量重建 11 个 target（含 Android arm64/x86_64、iOS 真机/模拟器），
   产物写入 zig-out/<target>/，加入 git 后 commit，默认 push 到 upstream。
   运行前请先 git submodule update --recursive 更新子模块到目标版本。
   Android target 需要 ANDROID_NDK_HOME；iOS 需要 Xcode。
