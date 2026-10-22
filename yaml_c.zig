@@ -11,6 +11,12 @@ pub const yaml_parser_t = yaml_h.yaml_parser_t;
 pub const yaml_node_t = yaml_h.yaml_node_t;
 
 // ---- 常量 ----
+pub const yaml_scalar_style_t = yaml_h.yaml_scalar_style_t;
+pub const YAML_PLAIN_SCALAR_STYLE = yaml_h.YAML_PLAIN_SCALAR_STYLE;
+pub const YAML_SINGLE_QUOTED_SCALAR_STYLE = yaml_h.YAML_SINGLE_QUOTED_SCALAR_STYLE;
+pub const YAML_DOUBLE_QUOTED_SCALAR_STYLE = yaml_h.YAML_DOUBLE_QUOTED_SCALAR_STYLE;
+pub const YAML_LITERAL_SCALAR_STYLE = yaml_h.YAML_LITERAL_SCALAR_STYLE;
+pub const YAML_FOLDED_SCALAR_STYLE = yaml_h.YAML_FOLDED_SCALAR_STYLE;
 pub const YAML_SCALAR_NODE = yaml_h.YAML_SCALAR_NODE;
 pub const YAML_SEQUENCE_NODE = yaml_h.YAML_SEQUENCE_NODE;
 pub const YAML_MAPPING_NODE = yaml_h.YAML_MAPPING_NODE;

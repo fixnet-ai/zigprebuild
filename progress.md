@@ -35,3 +35,4 @@
 - **判断依据**：lwip 由消费方（zf/zo/zt/kiss-core）从本仓工作树直接编译 C 源（build.zig.zon
   .paths 注释）——无预编译产物差异、消费方路径依赖不按 tag pin → 工作树即时消费，
   无需为纯指针 bump 单发 patch tag（#20 明确释放判断，09-02）。
+- 10-23 yaml_c shim 导出 libyaml scalar style 常量（yaml_scalar_style_t + 5 个 YAML_*_SCALAR_STYLE）
