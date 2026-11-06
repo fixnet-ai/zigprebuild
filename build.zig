@@ -146,6 +146,14 @@ pub fn build(b: *std.Build) void {
         b.fmt("-DCMAKE_RANLIB={s}", .{zig_ranlib}),
         "-S", bs_src,
     });
+    // iOS 15 兼容（2026-11-06）：见 ios-libcpp-verbose-abort-override.h 头注释。
+    // 经 -include 强制注入（不能用 -D 传函数式宏——cmake/ninja 经 /bin/sh -c 执行
+    // 编译命令，`(...)` 会被当 shell 语法报错）。
+    if (is_ios) {
+        bs_configure.addArg(b.fmt("-DCMAKE_CXX_FLAGS=-include {s}", .{
+            b.pathFromRoot("ios-libcpp-verbose-abort-override.h"),
+        }));
+    }
     // ASM 参数（2026-08-30）：Windows x86/x86_64 .asm 需 NASM；有 → ASM_NASM_COMPILER +
     // NO_ASM=OFF（显式覆盖旧 cache 残留）；无 → 降级 NO_ASM=ON + 告警。其他平台 → zig-asm + OFF。
     // 显式 OFF 是必须的：增量 configure 复用旧 CMakeCache，历史构建若传过 ON 会残留，
@@ -164,6 +172,9 @@ pub fn build(b: *std.Build) void {
     }
     bs_configure.step.dependOn(&setup_wrappers.step);
     bs_configure.setEnvironmentVariable("CC", cc_env);
+    // cmake 步骤写 build/<target>/ 与 zig-out/<target>/ 下的未声明产物，Zig 缓存跟踪不到，
+    // 必须 has_side_effects=true 否则改了 flags 也不会触发 cmake --build 重编（2026-11-06 实测）。
+    bs_configure.has_side_effects = true;
     // BoringSSL 的 crypto/ssl 库主体是 C++（.cc 源文件），必须设置 CXX，
     // 否则 cmake 回退到宿主 C++ 编译器，产出错误架构/格式的 .obj（如 arm64 Mach-O）
     bs_configure.setEnvironmentVariable("CXX", cxx_env);
@@ -174,6 +185,7 @@ pub fn build(b: *std.Build) void {
     });
     bs_build.step.dependOn(&bs_configure.step);
     bs_build.setEnvironmentVariable("GOWORK", "off");
+    bs_build.has_side_effects = true;
 
     const bs_copy = b.addSystemCommand(&.{
         "sh", "-c",
@@ -188,6 +200,7 @@ pub fn build(b: *std.Build) void {
         , .{ out_dir, bs_build_dir, bs_src }),
     });
     bs_copy.step.dependOn(&bs_build.step);
+    bs_copy.has_side_effects = true;
 
     // ================================================================
     // 2. nghttp2（HTTP/2 帧层，无加密依赖）
